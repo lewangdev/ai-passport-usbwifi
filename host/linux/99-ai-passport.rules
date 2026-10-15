@@ -1,0 +1,4 @@
+# 让 ModemManager 忽略 ESP32-C3 USB-Serial-JTAG(AI Passport),避免它用 AT 命令探测、
+# 抢占串口。安装: sudo cp 99-ai-passport.rules /etc/udev/rules.d/ && sudo udevadm control --reload
+# 然后重新插拔设备。
+ACTION=="add|change", SUBSYSTEM=="tty", ATTRS{idVendor}=="303a", ATTRS{idProduct}=="1001", ENV{ID_MM_DEVICE_IGNORE}="1"

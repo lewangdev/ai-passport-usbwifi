@@ -1,0 +1,15 @@
+menu "AI Passport USB WiFi"
+
+    config USBWIFI_DEFAULT_SSID
+        string "Default Wi-Fi SSID"
+        default ""
+        help
+            Used only when no network has been saved through the setup page.
+            Leave empty to configure Wi-Fi from http://10.77.0.1/ instead.
+            Do not commit real credentials.
+
+    config USBWIFI_DEFAULT_PASSWORD
+        string "Default Wi-Fi password"
+        default ""
+
+endmenu

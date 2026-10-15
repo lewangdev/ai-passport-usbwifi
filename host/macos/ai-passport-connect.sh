@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# 通过 AI Passport(USB 串口 + PPP)让 macOS 上网。macOS 自带 /usr/sbin/pppd。
+# 用法: ./ai-passport-connect.sh [/dev/cu.usbmodemXXXX]     Ctrl+C 断开。
+# 注意: 本脚本尚未在真机上验证,如遇问题请反馈 pppd 输出。
+set -euo pipefail
+
+if [[ $EUID -ne 0 ]]; then
+    exec sudo "$0" "$@"
+fi
+
+port="${1:-$(ls /dev/cu.usbmodem* 2>/dev/null | head -n1 || true)}"
+if [[ -z "$port" || ! -e "$port" ]]; then
+    echo "找不到 AI Passport 串口 (/dev/cu.usbmodem*)。请用数据线连接设备,或手动指定。" >&2
+    exit 1
+fi
+
+service="State:/Network/Service/ai-passport"
+cleanup() {
+    kill "${pppd_pid:-}" 2>/dev/null || true
+    wait "${pppd_pid:-}" 2>/dev/null || true
+    scutil <<SC >/dev/null 2>&1 || true
+remove $service/IPv4
+remove $service/DNS
+SC
+    echo "已断开"
+}
+trap cleanup INT TERM EXIT
+
+echo "使用串口 $port"
+/usr/sbin/pppd "$port" 115200 \
+    nodetach noauth local nocrtscts \
+    noipdefault ipcp-accept-local ipcp-accept-remote defaultroute \
+    novj nobsdcomp nodeflate noaccomp nopcomp \
+    lcp-echo-interval 5 lcp-echo-failure 4 &
+pppd_pid=$!
+
+iface=""
+for _ in $(seq 1 30); do
+    iface="$(ifconfig | awk '/^ppp[0-9]+:/ {sub(":", "", $1); i=$1} /inet 10\.77\.0\.2 / {print i; exit}')"
+    [[ -n "$iface" ]] && break
+    sleep 1
+done
+if [[ -z "$iface" ]]; then
+    echo "30 秒内未建立 PPP 链路。检查设备屏幕上的 USB 状态。" >&2
+    wait "$pppd_pid"
+    exit 1
+fi
+
+# 向设备查询它通过 PPP 下发的 DNS(路由器 DNS 或公共 DNS 兜底)。
+dns="$(curl -s --max-time 3 -H 'Host: 10.77.0.1' http://10.77.0.1/api/status \
+      | sed -n 's/.*"dns":"\([^"]*\)".*/\1/p')"
+dns="${dns:-223.5.5.5} 8.8.8.8"
+scutil <<SC
+d.init
+d.add Addresses * 10.77.0.2
+d.add DestAddresses * 10.77.0.1
+d.add InterfaceName $iface
+d.add Router 10.77.0.1
+set $service/IPv4
+d.init
+d.add ServerAddresses * $dns
+set $service/DNS
+SC
+echo "已连接: $iface 10.77.0.2 -> 10.77.0.1    配置页: http://10.77.0.1/"
+wait "$pppd_pid"
