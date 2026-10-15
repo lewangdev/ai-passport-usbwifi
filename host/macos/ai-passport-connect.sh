@@ -14,6 +14,14 @@ if [[ -z "$port" || ! -e "$port" ]]; then
     exit 1
 fi
 
+# macOS 自带的 pppd 启动时必须能读到 /etc/ppp/options,但系统默认不提供这个文件,
+# 缺失时 pppd 会立即退出:"Can't open options file /etc/ppp/options"。
+if [[ ! -e /etc/ppp/options ]]; then
+    mkdir -p /etc/ppp
+    touch /etc/ppp/options
+    echo "已创建空的 /etc/ppp/options(macOS pppd 必需)"
+fi
+
 service="State:/Network/Service/ai-passport"
 cleanup() {
     kill "${pppd_pid:-}" 2>/dev/null || true
@@ -36,6 +44,10 @@ pppd_pid=$!
 
 iface=""
 for _ in $(seq 1 30); do
+    if ! kill -0 "$pppd_pid" 2>/dev/null; then
+        echo "pppd 已退出,请查看上面的 pppd 输出。" >&2
+        exit 1
+    fi
     iface="$(ifconfig | awk '/^ppp[0-9]+:/ {sub(":", "", $1); i=$1} /inet 10\.77\.0\.2 / {print i; exit}')"
     [[ -n "$iface" ]] && break
     sleep 1

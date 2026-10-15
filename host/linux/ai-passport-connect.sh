@@ -37,6 +37,10 @@ trap 'kill $pppd_pid 2>/dev/null; wait $pppd_pid 2>/dev/null; echo "已断开"' 
 
 # 等待 PPP 接口拿到地址,然后配置 DNS(systemd-resolved 系统需要手动设置)。
 for _ in $(seq 1 30); do
+    if ! kill -0 "$pppd_pid" 2>/dev/null; then
+        echo "pppd 已退出,请查看上面的 pppd 输出。" >&2
+        exit 1
+    fi
     iface="$(ip -o -4 addr show | awk '$4 ~ /^10\.77\.0\.2\// {print $2; exit}')"
     [[ -n "$iface" ]] && break
     sleep 1

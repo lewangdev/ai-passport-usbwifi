@@ -94,6 +94,8 @@ sudo host/linux/ai-passport-connect.sh                 # 自动查找 /dev/seria
 host/macos/ai-passport-connect.sh                      # 使用系统自带 /usr/sbin/pppd
 ```
 
+macOS 自带的 `pppd` 启动时必须读取 `/etc/ppp/options`，系统默认没有这个文件，缺失时 `pppd` 会立即退出。脚本会自动创建一个空文件；手动运行 `pppd` 的话，先执行 `sudo touch /etc/ppp/options`。
+
 ### Windows（拨号网络）
 
 1. 设备管理器里会出现“USB 串行设备 (COMx)”。

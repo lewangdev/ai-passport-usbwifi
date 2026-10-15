@@ -94,6 +94,8 @@ The udev rule makes ModemManager ignore the device. Because the firmware answers
 host/macos/ai-passport-connect.sh                      # uses the built-in /usr/sbin/pppd
 ```
 
+The built-in macOS `pppd` must be able to read `/etc/ppp/options`, which macOS does not ship; without it `pppd` exits immediately. The script creates an empty file automatically. If you run `pppd` by hand, run `sudo touch /etc/ppp/options` first.
+
 ### Windows (dial-up networking)
 
 1. Device Manager shows a "USB Serial Device (COMx)".
