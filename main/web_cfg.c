@@ -31,9 +31,20 @@ static bool request_allowed(httpd_req_t *req)
     socklen_t len = sizeof(local);
     int fd = httpd_req_to_sockfd(req);
     if (getsockname(fd, (struct sockaddr *)&local, &len) != 0) return false;
-    if (local.ss_family != AF_INET) return false;
-    const struct sockaddr_in *in = (const struct sockaddr_in *)&local;
-    if (in->sin_addr.s_addr != usb_link_local_ip()) return false;
+    uint32_t local_ip;
+    if (local.ss_family == AF_INET) {
+        local_ip = ((const struct sockaddr_in *)&local)->sin_addr.s_addr;
+    } else if (local.ss_family == AF_INET6) {
+        // httpd 在启用 IPv6 时监听双栈 socket,IPv4 连接的本端地址是
+        // IPv4 映射形式 ::ffff:a.b.c.d,取最后 4 字节。
+        const struct sockaddr_in6 *in6 = (const struct sockaddr_in6 *)&local;
+        const uint32_t *w = in6->sin6_addr.un.u32_addr;
+        if (w[0] != 0 || w[1] != 0 || w[2] != PP_HTONL(0x0000FFFFUL)) return false;
+        local_ip = w[3];
+    } else {
+        return false;
+    }
+    if (local_ip != usb_link_local_ip()) return false;
 
     char host[24];
     if (httpd_req_get_hdr_value_str(req, "Host", host, sizeof(host)) != ESP_OK) return false;
