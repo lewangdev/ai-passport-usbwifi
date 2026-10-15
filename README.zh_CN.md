@@ -86,13 +86,19 @@ sudo cp host/linux/99-ai-passport.rules /etc/udev/rules.d/ && sudo udevadm contr
 sudo host/linux/ai-passport-connect.sh                 # 自动查找 /dev/serial/by-id/*Espressif*
 ```
 
+脚本会自动处理默认路由（已有其他默认路由时，加一条优先级更高的经 PPP）和 DNS（支持 systemd-resolved，否则临时改写 `/etc/resolv.conf`），按 Ctrl+C 断开时一并恢复，连上后会自检路由和域名解析。
+
 装 udev 规则是为了让 ModemManager 忽略这个设备。因为固件会应答 AT 命令，不加规则的话 ModemManager 可能把它当成调制解调器并抢占串口。
 
 ### macOS
 
+先关闭代理/VPN 和 Mac 的 Wi-Fi，再运行：
+
 ```bash
 host/macos/ai-passport-connect.sh                      # 使用系统自带 /usr/sbin/pppd
 ```
+
+脚本会把这条连接登记为系统首选网络服务，系统 DNS 随之切换，连上后打印"系统 DNS"供核对，断开时撤销。
 
 macOS 自带的 `pppd` 启动时必须读取 `/etc/ppp/options`，系统默认没有这个文件，缺失时 `pppd` 会立即退出。脚本会自动创建一个空文件；手动运行 `pppd` 的话，先执行 `sudo touch /etc/ppp/options`。
 
@@ -101,6 +107,25 @@ macOS 自带的 `pppd` 启动时必须读取 `/etc/ppp/options`，系统默认�
 1. 设备管理器里会出现“USB 串行设备 (COMx)”。
 2. 控制面板 → 电话和调制解调器 → 调制解调器 → 添加 → 勾选“不要检测我的调制解调器” → 选“标准调制解调器类型 / 标准 33600 bps 调制解调器” → 端口选 COMx。
 3. 设置 → 网络和 Internet → 拨号 → 设置新连接 → 连接到 Internet → 拨号，调制解调器选上一步那个，电话号码填 `*99#`，用户名和密码留空 → 连接。
+
+拨号连接的 DNS 和默认网关由 Windows 自动配置（连接属性 → 网络 → IPv4 → 高级 → "在远程网络上使用默认网关"保持勾选）。
+
+## 连不上网时
+
+1. **关闭代理/VPN。** Clash、Shadowrocket、Surge 这类 TUN 模式的代理会占住默认路由和 DNS（常见表现是域名被解析成 `198.18.x.x`），流量根本不走 AI Passport。仅关闭代理开关不够，要彻底退出软件。Windows 上还要关掉系统代理。
+2. **先断开电脑原有的网络，再连接。** 已有默认路由时，`pppd` 不会改走 PPP。Linux 脚本会自动处理；macOS 请先关 Wi-Fi 再运行脚本。
+3. **看脚本输出的自检结果。** Linux 会打印"自检通过"或具体原因；macOS 会打印"系统 DNS"和期望值。
+4. **运行诊断脚本，**它会逐层检查链路、设备 Wi-Fi、路由、直连 IP、DNS、代理和设备日志，把输出发给开发者即可：
+   - macOS / Linux：`host/diagnose.sh`
+   - Windows：`powershell -ExecutionPolicy Bypass -File host\windows\diagnose.ps1`
+
+常见现象对照：
+
+| 现象 | 原因 |
+| --- | --- |
+| 配置页打不开，`ping 10.77.0.1` 不通 | PPP 链路没建立，看连接脚本或 `pppd` 的输出 |
+| 配置页能开，但 IP 也不通 | 设备没连上 Wi-Fi，或者默认路由不在 PPP 上（代理/VPN、电脑原有网络） |
+| IP 能通，域名不行 | 系统 DNS 没切换（代理残留、或脚本的 DNS 配置没生效） |
 
 ## 已知限制
 
@@ -115,10 +140,10 @@ macOS 自带的 `pppd` 启动时必须读取 `/etc/ppp/options`，系统默认�
 ```text
 Build:        PASS（ESP-IDF 5.5.3，esp32c3）
 Host tests:   PASS（tools/host_test.sh：link_cmd、form_parse）
-Device tests: 部分通过：已烧录到真机，启动正常；USB 命令模式应答正确
-              （AT→OK、ATE0、ATI→"AI Passport USB-WiFi"）
-Unverified:   PPP 握手与 NAT 转发、实际吞吐、运行时空闲堆、屏幕渲染、按键、
-              Linux/macOS 脚本、Windows 拨号流程、配网网页的端到端流程
+Device tests: macOS 端到端通过：PPP 握手、配置页配网、NAT 转发上网、DNS 解析；
+              USB 命令模式应答正确（AT→OK、ATE0、ATI）
+Unverified:   实际吞吐、运行时空闲堆、长时间稳定性、屏幕渲染与按键的逐项检查、
+              Linux 连接脚本、Windows 拨号流程与 diagnose.ps1
 ```
 
 ## 目录
@@ -136,7 +161,7 @@ main/
   ui.c           屏幕状态页
   app_status.c   模块间共享状态
 components/bsp/  来自上游 AI Passport 的板级支持包（未修改）
-host/            电脑端连接脚本
+host/            电脑端连接脚本与诊断脚本（diagnose.sh、windows/diagnose.ps1）
 tests/           主机单元测试
 ```
 

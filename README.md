@@ -86,13 +86,19 @@ sudo cp host/linux/99-ai-passport.rules /etc/udev/rules.d/ && sudo udevadm contr
 sudo host/linux/ai-passport-connect.sh                 # finds /dev/serial/by-id/*Espressif* automatically
 ```
 
+The script handles the default route (when another default route exists, it adds a higher-priority one through PPP) and DNS (systemd-resolved if present, otherwise a temporary `/etc/resolv.conf`), restores both on Ctrl+C, and self-checks routing and name resolution after connecting.
+
 The udev rule makes ModemManager ignore the device. Because the firmware answers AT commands, without the rule ModemManager may treat it as a modem and grab the serial port.
 
 ### macOS
 
+Turn off any proxy/VPN and the Mac's Wi-Fi first, then run:
+
 ```bash
 host/macos/ai-passport-connect.sh                      # uses the built-in /usr/sbin/pppd
 ```
+
+The script registers the link as the system's primary network service so the system DNS switches over, prints the resulting "system DNS" for you to check, and undoes it on disconnect.
 
 The built-in macOS `pppd` must be able to read `/etc/ppp/options`, which macOS does not ship; without it `pppd` exits immediately. The script creates an empty file automatically. If you run `pppd` by hand, run `sudo touch /etc/ppp/options` first.
 
@@ -101,6 +107,25 @@ The built-in macOS `pppd` must be able to read `/etc/ppp/options`, which macOS d
 1. Device Manager shows a "USB Serial Device (COMx)".
 2. Control Panel → Phone and Modem → Modems → Add → check "Don't detect my modem" → choose "Standard Modem Types / Standard 33600 bps Modem" → select port COMx.
 3. Settings → Network & Internet → Dial-up → Set up a new connection → Connect to the Internet → Dial-up, choose that modem, enter `*99#` as the phone number, leave user name and password empty → Connect.
+
+Windows configures DNS and the default gateway for the dial-up connection automatically (keep "Use default gateway on remote network" checked under connection Properties → Networking → IPv4 → Advanced).
+
+## When you cannot get online
+
+1. **Turn off proxies/VPNs.** TUN-mode proxies such as Clash, Shadowrocket, or Surge take over the default route and DNS (a common symptom is names resolving to `198.18.x.x`), so traffic never goes through AI Passport. Switching the proxy off is not enough; quit the app completely. On Windows, also turn off the system proxy.
+2. **Disconnect the computer's existing network before connecting.** When a default route already exists, `pppd` does not move traffic to PPP. The Linux script handles this automatically; on macOS, turn off Wi-Fi before running the script.
+3. **Read the script's self-check.** Linux prints "自检通过" (self-check passed) or the specific reason; macOS prints the "system DNS" next to the expected value.
+4. **Run the diagnose script.** It checks the link, device Wi-Fi, routing, raw IP reachability, DNS, proxy settings, and the device log layer by layer; send its output to the developer:
+   - macOS / Linux: `host/diagnose.sh`
+   - Windows: `powershell -ExecutionPolicy Bypass -File host\windows\diagnose.ps1`
+
+Symptoms and causes:
+
+| Symptom | Cause |
+| --- | --- |
+| Setup page does not open, `ping 10.77.0.1` fails | The PPP link is not up; check the connect script or `pppd` output |
+| Setup page opens, but IP addresses are unreachable | The device is not on Wi-Fi, or the default route is not on PPP (proxy/VPN, the computer's existing network) |
+| IP addresses work, domain names do not | The system DNS did not switch (proxy leftovers, or the script's DNS setup did not take effect) |
 
 ## Known limitations
 
@@ -115,11 +140,12 @@ The built-in macOS `pppd` must be able to read `/etc/ppp/options`, which macOS d
 ```text
 Build:        PASS (ESP-IDF 5.5.3, esp32c3)
 Host tests:   PASS (tools/host_test.sh: link_cmd, form_parse)
-Device tests: PARTIAL: flashed to a real device, boots; USB command mode answers
-              correctly (AT→OK, ATE0, ATI→"AI Passport USB-WiFi")
-Unverified:   PPP handshake and NAT forwarding, real throughput, runtime free heap,
-              screen rendering, buttons, Linux/macOS scripts, Windows dial-up flow,
-              end-to-end Wi-Fi setup through the web page
+Device tests: macOS end-to-end PASS: PPP handshake, Wi-Fi setup through the web
+              page, NAT forwarding to the internet, DNS resolution; USB command
+              mode answers correctly (AT→OK, ATE0, ATI)
+Unverified:   real throughput, runtime free heap, long-run stability, item-by-item
+              screen and button checks, Linux connect script, Windows dial-up flow
+              and diagnose.ps1
 ```
 
 ## Layout
@@ -137,7 +163,7 @@ main/
   ui.c           on-screen status page
   app_status.c   state shared between modules
 components/bsp/  board support package from upstream AI Passport (unmodified)
-host/            computer-side connect scripts
+host/            computer-side connect and diagnose scripts (diagnose.sh, windows/diagnose.ps1)
 tests/           host unit tests
 ```
 
