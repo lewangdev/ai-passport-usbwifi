@@ -62,16 +62,29 @@ fi
 dns="$(curl -s --max-time 3 -H 'Host: 10.77.0.1' http://10.77.0.1/api/status \
       | sed -n 's/.*"dns":"\([^"]*\)".*/\1/p')"
 dns="${dns:-223.5.5.5} 8.8.8.8"
+# 向 configd 登记一个动态网络服务,写法参照 OpenConnect vpnc-script:
+# 先写 DNS 再写 IPv4(IPv4 写入会触发重新选主);OverridePrimary 让它成为
+# 首选服务,系统 DNS 才会改用这里的服务器。
 scutil <<SC
-d.init
-d.add Addresses * 10.77.0.2
-d.add DestAddresses * 10.77.0.1
-d.add InterfaceName $iface
-d.add Router 10.77.0.1
-set $service/IPv4
 d.init
 d.add ServerAddresses * $dns
 set $service/DNS
+d.init
+d.add Addresses * 10.77.0.2
+d.add SubnetMasks * 255.255.255.255
+d.add DestAddresses * 10.77.0.1
+d.add InterfaceName $iface
+d.add Router 10.77.0.1
+d.add OverridePrimary # 1
+set $service/IPv4
 SC
 echo "已连接: $iface 10.77.0.2 -> 10.77.0.1    配置页: http://10.77.0.1/"
+
+# 确认系统首选 DNS 已切换。
+sleep 1
+first_ns="$(scutil --dns | awk '/^resolver #1/ {r=1} r && /nameserver\[0\]/ {print $3; exit}')"
+echo "系统 DNS: ${first_ns:-未知}(期望: ${dns%% *})"
+if [[ "$first_ns" != "${dns%% *}" ]]; then
+    echo "!! 系统 DNS 没有切换过来。请确认已关闭代理/VPN 和 Mac 的 Wi-Fi,然后重新运行本脚本。" >&2
+fi
 wait "$pppd_pid"
