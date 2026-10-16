@@ -5,3 +5,4 @@ managed_components/
 .vscode/
 .idea/
 ref-ai-passport/
+.build/

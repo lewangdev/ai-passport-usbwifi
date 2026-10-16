@@ -62,7 +62,14 @@ USB-Serial-JTAG is a USB full-speed (12 Mbit/s) device with 64-byte bulk packets
 
 ## Build and flash
 
-Environment: ESP-IDF 5.5.3 (same as upstream AI Passport).
+**Prebuilt firmware:** download `ai-passport-usbwifi-firmware-<version>.bin` from [Releases](https://github.com/lewangdev/ai-passport-usbwifi/releases). It is a merged image, so flash it at offset `0x0`:
+
+```bash
+pip install esptool
+python -m esptool --chip esp32c3 -p <port> write_flash 0x0 ai-passport-usbwifi-firmware-0.1.0.bin
+```
+
+**From source:** environment: ESP-IDF 5.5.3 (same as upstream AI Passport).
 
 ```bash
 idf.py set-target esp32c3
@@ -91,6 +98,48 @@ The script handles the default route (when another default route exists, it adds
 The udev rule makes ModemManager ignore the device. Because the firmware answers AT commands, without the rule ModemManager may treat it as a modem and grab the serial port.
 
 ### macOS
+
+#### Menu bar app (recommended)
+
+Pocket USB Wi-Fi is a menu bar app for macOS 13 or later, on Apple silicon or Intel. It dials up for you, so you never open a terminal.
+
+**Install**
+
+1. Download `PocketUSBWiFi-<version>.dmg` from [Releases](https://github.com/lewangdev/ai-passport-usbwifi/releases).
+2. Open the dmg and drag **Pocket USB Wi-Fi** into **Applications**.
+3. The first time, right-click the app in Applications and choose **Open**, then **Open** again. The app is not notarized, so a plain double-click is blocked once. If macOS still refuses, go to System Settings → Privacy & Security and click **Open Anyway**.
+
+The app has no Dock icon. It lives in the menu bar as a USB-plug icon.
+
+**Use**
+
+1. Quit any proxy/VPN app completely (Clash, Shadowrocket, Surge, …) and turn off the Mac's own Wi-Fi if it has one.
+2. Connect AI Passport with a USB **data** cable. The panel says "Device found, ready to connect".
+3. Click the menu bar icon, then **Connect**, and enter your Mac login password. `pppd` needs administrator rights, so this is asked on every connect.
+4. In a few seconds the panel shows "Connected (pppX)". The icon turns into radio waves.
+5. First time only: click **Open setup page (Wi-Fi)**, pick your Wi-Fi network, and enter its password. Only 2.4 GHz networks work. The device saves the network only after it connects successfully, and reconnects to it automatically next time.
+6. When the panel shows the Wi-Fi name, signal, and speed, you are online.
+7. Click **Disconnect** (or **Quit**, or unplug the device) when done. Routes and DNS are restored automatically.
+
+**Panel messages**
+
+| Message | What to do |
+| --- | --- |
+| AI Passport not found | Use a data cable (not a charge-only cable) and replug. Check that the device runs this firmware. |
+| Traffic goes through en0, not AI Passport | Turn off the Mac's Wi-Fi or unplug Ethernet, then disconnect and connect again. |
+| VPN/proxy detected (utunN) | Quit the proxy app completely, not just its switch, then reconnect. |
+| Wi-Fi is not configured yet | Open the setup page and choose a network. |
+| Connection failed | Click **View log** and send its contents to the developer. The log is at `~/Library/Logs/PocketUSBWiFi/connect.log`. |
+
+**Build from source** (needs the Xcode command line tools):
+
+```bash
+host/macos/app/build.sh 0.1.0      # -> host/macos/app/build/Pocket USB Wi-Fi.app and PocketUSBWiFi-0.1.0.dmg
+```
+
+The build is ad-hoc signed. Set `SIGN_IDENTITY` to sign with your own certificate. Asking for the password only once would need a privileged helper signed with a Developer ID certificate. That is not implemented yet.
+
+#### Command line
 
 Turn off any proxy/VPN and the Mac's Wi-Fi first, then run:
 

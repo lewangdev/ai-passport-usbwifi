@@ -62,7 +62,14 @@ USB-Serial-JTAG 是 USB 全速（12 Mbit/s）设备，批量端点每包 64 字�
 
 ## 构建与烧录
 
-环境：ESP-IDF 5.5.3（与上游 AI Passport 一致）。
+**预编译固件：**从 [Releases](https://github.com/lewangdev/ai-passport-usbwifi/releases) 下载 `ai-passport-usbwifi-firmware-<版本>.bin`。这是合并镜像，从 `0x0` 烧录：
+
+```bash
+pip install esptool
+python -m esptool --chip esp32c3 -p <端口> write_flash 0x0 ai-passport-usbwifi-firmware-0.1.0.bin
+```
+
+**从源码构建：**环境：ESP-IDF 5.5.3（与上游 AI Passport 一致）。
 
 ```bash
 idf.py set-target esp32c3
@@ -91,6 +98,48 @@ sudo host/linux/ai-passport-connect.sh                 # 自动查找 /dev/seria
 装 udev 规则是为了让 ModemManager 忽略这个设备。因为固件会应答 AT 命令，不加规则的话 ModemManager 可能把它当成调制解调器并抢占串口。
 
 ### macOS
+
+#### 菜单栏应用（推荐）
+
+"随身 USB 网卡"是一个 macOS 菜单栏应用，支持 macOS 13 及以上，Apple 芯片和 Intel 芯片都能用。它替你拨号，不用打开终端。
+
+**安装**
+
+1. 从 [Releases](https://github.com/lewangdev/ai-passport-usbwifi/releases) 下载 `PocketUSBWiFi-<版本>.dmg`。
+2. 打开 dmg，把 **Pocket USB Wi-Fi** 拖进"应用程序"。
+3. 第一次打开时，在"应用程序"里右键点应用，选**打开**，再点一次**打开**。应用没有经过苹果公证，直接双击会被拦一次。如果仍被拒绝，到"系统设置 → 隐私与安全性"里点**仍要打开**。
+
+应用不在程序坞显示，图标是菜单栏里的 USB 插头。
+
+**使用**
+
+1. 彻底退出代理/VPN 软件（Clash、Shadowrocket、Surge 等）；如果 Mac 自带的 Wi-Fi 能用，也先关掉。
+2. 用 USB **数据线**连接 AI Passport，面板显示"已检测到设备，可以连接"。
+3. 点菜单栏图标，再点**连接**，输入 Mac 开机密码。`pppd` 需要管理员权限，所以每次连接都会问一次。
+4. 几秒后面板显示"已连接（pppX）"，图标变成信号波纹。
+5. 仅第一次需要：点**打开配置页（设置 Wi-Fi）**，选择 Wi-Fi 并输入密码。只支持 2.4 GHz。设备连接成功后才保存这个网络，以后插上会自动重连。
+6. 面板显示 Wi-Fi 名称、信号和速度，就可以上网了。
+7. 用完点**断开**（或**退出**、直接拔掉设备），路由和 DNS 会自动恢复。
+
+**面板提示**
+
+| 提示 | 处理 |
+| --- | --- |
+| 未检测到 AI Passport | 换数据线（不能用只能充电的线）重新插拔，并确认设备刷的是本固件。 |
+| 上网流量走的是 en0 而不是 AI Passport | 关闭 Mac 的 Wi-Fi 或拔掉网线，再断开后重新连接。 |
+| 检测到 VPN/代理（utunN） | 彻底退出代理软件（仅关闭开关不够），再重新连接。 |
+| 设备还没有配置 Wi-Fi | 打开配置页选择网络。 |
+| 连接失败 | 点**查看日志**，把内容发给开发者。日志在 `~/Library/Logs/PocketUSBWiFi/connect.log`。 |
+
+**从源码构建**（需要 Xcode 命令行工具）：
+
+```bash
+host/macos/app/build.sh 0.1.0      # 生成 host/macos/app/build/Pocket USB Wi-Fi.app 和 PocketUSBWiFi-0.1.0.dmg
+```
+
+构建产物使用 ad-hoc 签名，设置 `SIGN_IDENTITY` 可改用自己的证书。想做到只输一次密码，需要用 Developer ID 证书签名的特权辅助程序，目前还没有实现。
+
+#### 命令行
 
 先关闭代理/VPN 和 Mac 的 Wi-Fi，再运行：
 

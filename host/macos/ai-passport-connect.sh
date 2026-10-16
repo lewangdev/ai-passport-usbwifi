@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # 通过 AI Passport(USB 串口 + PPP)让 macOS 上网。macOS 自带 /usr/sbin/pppd。
 # 用法: ./ai-passport-connect.sh [/dev/cu.usbmodemXXXX]     Ctrl+C 断开。
-# 注意: 本脚本尚未在真机上验证,如遇问题请反馈 pppd 输出。
+# 菜单栏应用以 root 后台运行本脚本,并通过环境变量控制会话:
+#   AIP_WATCH_PID  应用进程号,应用退出后自动断开
+#   AIP_STOP_FILE  该文件出现时断开
 set -euo pipefail
 
 if [[ $EUID -ne 0 ]]; then
@@ -42,8 +44,16 @@ echo "使用串口 $port"
     lcp-echo-interval 5 lcp-echo-failure 4 &
 pppd_pid=$!
 
+# 菜单栏应用要求结束会话时返回 0。
+stop_requested() {
+    [[ -n "${AIP_WATCH_PID:-}" ]] && ! kill -0 "$AIP_WATCH_PID" 2>/dev/null && return 0
+    [[ -n "${AIP_STOP_FILE:-}" && -e "$AIP_STOP_FILE" ]] && return 0
+    return 1
+}
+
 iface=""
 for _ in $(seq 1 30); do
+    stop_requested && exit 0
     if ! kill -0 "$pppd_pid" 2>/dev/null; then
         echo "pppd 已退出,请查看上面的 pppd 输出。" >&2
         exit 1
@@ -54,6 +64,7 @@ for _ in $(seq 1 30); do
 done
 if [[ -z "$iface" ]]; then
     echo "30 秒内未建立 PPP 链路。检查设备屏幕上的 USB 状态。" >&2
+    [[ -n "${AIP_WATCH_PID:-}" ]] && exit 1
     wait "$pppd_pid"
     exit 1
 fi
@@ -86,5 +97,11 @@ first_ns="$(scutil --dns | awk '/^resolver #1/ {r=1} r && /nameserver\[0\]/ {pri
 echo "系统 DNS: ${first_ns:-未知}(期望: ${dns%% *})"
 if [[ "$first_ns" != "${dns%% *}" ]]; then
     echo "!! 系统 DNS 没有切换过来。请确认已关闭代理/VPN 和 Mac 的 Wi-Fi,然后重新运行本脚本。" >&2
+fi
+if [[ -n "${AIP_WATCH_PID:-}" ]]; then
+    while kill -0 "$pppd_pid" 2>/dev/null && ! stop_requested; do
+        sleep 1
+    done
+    exit 0
 fi
 wait "$pppd_pid"
